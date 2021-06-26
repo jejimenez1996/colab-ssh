@@ -1,4 +1,3 @@
-from colab_ssh.utils.packages.installer import create_deb_installer
 from colab_ssh.utils.ui.render_html import render_template
 from subprocess import Popen, PIPE
 import shlex
@@ -10,15 +9,12 @@ from .utils.expose_env_variable import expose_env_variable
 import importlib
 import sys
 import signal
-
-deb_install = create_deb_installer()
+import subprocess
 
 
 def launch_ssh_cloudflared(
-               password="",
-               verbose=False,
-               prevent_interrupt=False,
-               kill_other_processes=False):
+    password="", verbose=False, prevent_interrupt=False, kill_other_processes=False
+):
     # Kill any cloudflared process if running
     if kill_other_processes:
         os.system("kill -9 $(ps aux | grep 'cloudflared' | awk '{print $2}')")
@@ -26,14 +22,18 @@ def launch_ssh_cloudflared(
     # Download cloudflared
     if not os.path.isfile("cloudflared"):
         run_command(
-            "wget -q -nc https://bin.equinox.io/c/VdrWdbjqyF/cloudflared-stable-linux-amd64.tgz")
+            "wget -q -nc https://bin.equinox.io/c/VdrWdbjqyF/cloudflared-stable-linux-amd64.tgz"
+        )
         run_command("tar zxf cloudflared-stable-linux-amd64.tgz")
     else:
         if verbose:
             print("DEBUG: Skipping cloudflared installation")
 
     # Install the openssh server
-    deb_install("openssh-server", verbose=verbose)
+
+    subprocess.call("apt-get update -y", shell=True)
+    subprocess.call("apt-get upgrade -y", shell=True)
+    subprocess.call("apt-get install openssh-server -y", shell=True)
 
     # Set the password
     run_with_pipe("echo root:{} | chpasswd".format(password))
@@ -52,7 +52,7 @@ def launch_ssh_cloudflared(
     expose_env_variable("TPU_NAME")
     expose_env_variable("XRT_TPU_CONFIG")
 
-    os.system('service ssh start')
+    os.system("service ssh start")
 
     extra_params = []
     info = None
@@ -61,7 +61,7 @@ def launch_ssh_cloudflared(
     popen_command = f'./cloudflared tunnel --url ssh://localhost:22 --logfile ./cloudflared.log --metrics localhost:45678 {" ".join(extra_params)}'
     preexec_fn = None
     if prevent_interrupt:
-        popen_command = 'nohup ' + popen_command
+        popen_command = "nohup " + popen_command
         preexec_fn = os.setpgrp
     popen_command = shlex.split(popen_command)
 
@@ -90,12 +90,16 @@ def launch_ssh_cloudflared(
 
     if info:
         # print("Successfully running on ", "{}:{}".format(host, port))
-        if importlib.util.find_spec("IPython") and 'ipykernel' in sys.modules:
-            from IPython.display import display, HTML
+        if importlib.util.find_spec("IPython") and "ipykernel" in sys.modules:
+            from IPython.display import display, HTML  # type: ignore
+
             display(HTML(render_template("launch_ssh_cloudflared.html", info)))
         else:
-            print("Now, you need to setup your client machine by following these steps:")
-            print("""
+            print(
+                "Now, you need to setup your client machine by following these steps:"
+            )
+            print(
+                """
     1) Download Cloudflared (Argo Tunnel) from https://developers.cloudflare.com/argo-tunnel/getting-started/installation, then copy the absolute path to the cloudflare binary.
     2) Append the following to your SSH config file (usually under ~/.ssh/config):
 
@@ -112,7 +116,10 @@ def launch_ssh_cloudflared(
 *) Connect with VSCode Remote SSH
     You can also connect with VSCode Remote SSH (Ctrl+Shift+P and type "Connect to Host..."). Then, paste the following hostname in the opened command palette:
         {domain}
-""".format(**info))
+""".format(
+                    **info
+                )
+            )
 
     #     print("[Optional] You can also connect with VSCode SSH Remote extension by:")
     #     print(f"""
@@ -129,9 +136,10 @@ def launch_ssh_cloudflared(
     #     """)
     #     print(f'''
 
-        #   ''')
+    #   ''')
     else:
         print(proc.stdout.readlines())
         raise Exception(
-            "It looks like something went wrong, please make sure your token is valid")
+            "It looks like something went wrong, please make sure your token is valid"
+        )
     proc.stdout.close()
